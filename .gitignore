@@ -1,0 +1,51 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Bb]in/
+[Oo]bj/
+
+# NuGet
+packages/
+*.nupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Resharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+
+# Files built by Visual Studio
+*.dll
+*.exe
+*.cache
+*.pdb
+
+# Others
+Thumbs.db
+*.log
+
+# Rider
+.idea/
+
+# Windows image file cache
+ehthumbs.db
+
+# Package restore
+*.nuget.props
+
+# Local DB
+*.mdf
+*.ldf
+
+# User-specific files
+*.user
+*.vcxproj.user
+
+# VS Code
+.vscode/
