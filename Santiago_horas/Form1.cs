@@ -6,81 +6,80 @@ namespace Santiago_horas
 {
     public partial class Form1 : Form
     {
-        private int minHoras = 9; // 9 por padrão
+        private int minHoras = 9;
+        private Button botaoSelecionado = null;
+
+        private const int QTDE_LINHAS = 10;
+        private LinhaItem[] linhas;
 
         public Form1()
         {
             InitializeComponent();
+            CriarLinhas();
             CriarEventos();
+        }
 
-            foreach (var l in linhas)
-                l.txtHoras.Text = "00:00";
+        // monta as linhas no painel esquerdo
+        private void CriarLinhas()
+        {
+            linhas = new LinhaItem[QTDE_LINHAS];
+
+            int y = 10;
+            for (int i = 0; i < QTDE_LINHAS; i++)
+            {
+                linhas[i] = new LinhaItem();
+                linhas[i].Base.Location = new Point(10, y);
+
+                painelLinhas.Controls.Add(linhas[i].Base);
+
+                linhas[i].txtHoras.Text = "00:00";
+
+                y += 45;
+
+                // eventos exclusivos
+                int idx = i;
+
+                linhas[i].chkPRJ.CheckedChanged += (s, e) => Exclusivo(linhas[idx], linhas[idx].chkPRJ);
+                linhas[i].chkOS.CheckedChanged += (s, e) => Exclusivo(linhas[idx], linhas[idx].chkOS);
+                linhas[i].chkJUST.CheckedChanged += (s, e) => Exclusivo(linhas[idx], linhas[idx].chkJUST);
+
+                linhas[i].txtHoras.TextChanged += (s, e) => AtualizarTotal();
+            }
         }
 
         private void CriarEventos()
         {
-            // modos do dia (exclusivos)
             btnSexta.Click += (s, e) => SelecionarDia(8, btnSexta);
             btnSabado.Click += (s, e) => SelecionarDia(0, btnSabado);
             btnFeriado.Click += (s, e) => SelecionarDia(0, btnFeriado);
 
-            // para cada linha: garantir exclusividade e atualizar total quando horas mudam
-            for (int i = 0; i < linhas.Length; i++)
-            {
-                int idx = i;
-                linhas[idx].chkPRJ.CheckedChanged += (s, e) => Exclusivo(linhas[idx], linhas[idx].chkPRJ);
-                linesafe_EventWire(linhas[idx].chkPRJ, idx);
-
-                linhas[idx].chkOS.CheckedChanged += (s, e) => Exclusivo(linhas[idx], linhas[idx].chkOS);
-                linesafe_EventWire(linhas[idx].chkOS, idx);
-
-                linhas[idx].chkJUST.CheckedChanged += (s, e) => Exclusivo(linhas[idx], linhas[idx].chkJUST);
-                linesafe_EventWire(linhas[idx].chkJUST, idx);
-
-                linhas[idx].txtHoras.TextChanged += (s, e) => AtualizarTotal();
-            }
-
-            btnSalvar.Click += BtnSalvar_Click;
-
-            // preencher funcionários ao abrir dropdown (exemplo temporário)
             comboFuncionario.DropDown += (s, e) =>
             {
                 if (comboFuncionario.Items.Count == 0)
                     comboFuncionario.Items.AddRange(new object[] { "Luccas", "Sergio", "Schiabel" });
             };
 
-            // data atual
             dataPicker.Value = DateTime.Today;
+
+            btnSalvar.Click += BtnSalvar_Click;
 
             AtualizarTotal();
         }
 
-        // helper to avoid closure capture issues and make click behavior predictable
-        private void linesafe_EventWire(CheckBox chk, int idx)
-        {
-            chk.Click += (s, e) => { /* nothing extra here; CheckedChanged handles logic */ };
-        }
-
-        private Button botaoSelecionado = null;
-
         private void SelecionarDia(int minimo, Button btn)
         {
-            // se clicou no MESMO botão → desmarcar
             if (botaoSelecionado == btn)
             {
                 botaoSelecionado.BackColor = SystemColors.Control;
                 botaoSelecionado = null;
-
-                minHoras = 9;          // padrão
+                minHoras = 9;
                 AtualizarTotal();
                 return;
             }
 
-            // se havia um outro selecionado → limpa
             if (botaoSelecionado != null)
                 botaoSelecionado.BackColor = SystemColors.Control;
 
-            // ativa o novo
             botaoSelecionado = btn;
             botaoSelecionado.BackColor = Color.LightBlue;
 
@@ -92,18 +91,17 @@ namespace Santiago_horas
         {
             if (!marcado.Checked)
             {
-                // se desmarcou, liberamos combobox
                 linha.combo.DataSource = null;
                 linha.combo.Enabled = false;
                 return;
             }
 
-            // desmarca os outros da mesma linha
+            // desmarca outros
             if (marcado != linha.chkPRJ) linha.chkPRJ.Checked = false;
             if (marcado != linha.chkOS) linha.chkOS.Checked = false;
             if (marcado != linha.chkJUST) linha.chkJUST.Checked = false;
 
-            // popula combo conforme tipo
+            // popula combo
             if (marcado == linha.chkPRJ)
             {
                 linha.combo.DataSource = new string[] { "Projeto A", "Projeto B", "Projeto C" };
@@ -116,7 +114,10 @@ namespace Santiago_horas
             }
             else if (marcado == linha.chkJUST)
             {
-                linha.combo.DataSource = new string[] { "Lopes", "Limpeza", "Aguard. Desenho", "Manutenção", "Atestado" };
+                linha.combo.DataSource = new string[]
+                {
+                    "Lopes", "Limpeza", "Aguard. Desenho", "Manutenção", "Atestado"
+                };
                 linha.combo.Enabled = true;
             }
         }
@@ -127,30 +128,19 @@ namespace Santiago_horas
 
             foreach (var l in linhas)
             {
-                string txt = l.txtHoras.Text.Trim();
+                string txt = l.txtHoras.Text;
 
-                // Obrigatório HH:mm — ignora qualquer coisa vazia ou fora do padrão
-                if (string.IsNullOrWhiteSpace(txt))
-                    continue;
-
-                // Validação estrita no formato 00:00
-                if (!DateTime.TryParseExact(
-                        txt,
-                        "HH:mm",
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.None,
-                        out DateTime hora))
+                if (!DateTime.TryParseExact(txt, "HH:mm",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None,
+                    out DateTime hora))
                 {
-                    // Se inválido, zera o campo e ignora
-                    l.txtHoras.BackColor = Color.LightCoral;  // feedback visual
+                    l.txtHoras.BackColor = Color.LightCoral;
                     continue;
                 }
-                else
-                {
-                    l.txtHoras.BackColor = Color.White; // válido
-                }
 
-                // Converte HH:mm → decimal (ex: 05:30 = 5,5)
+                l.txtHoras.BackColor = Color.White;
+
                 soma += hora.Hour + (hora.Minute / 60.0);
             }
 
@@ -159,16 +149,20 @@ namespace Santiago_horas
 
         private void BtnSalvar_Click(object sender, EventArgs e)
         {
-            // valida mínimo
-            if (!double.TryParse(txtTotal.Text, out double total)) total = 0.0;
+            if (!double.TryParse(txtTotal.Text, out double total))
+                total = 0;
 
             if (total < minHoras)
             {
-                MessageBox.Show($"Erro: total ({total:0.##}h). Requer um mínimo de ({minHoras}h).", "Validação", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(
+                    $"Erro: total ({total:0.##}h). Requer mínimo de {minHoras}h.",
+                    "Validação",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
                 return;
             }
 
-            // validações por linha (ex.: se marcada, tem seleção)
             for (int i = 0; i < linhas.Length; i++)
             {
                 var l = linhas[i];
@@ -176,13 +170,18 @@ namespace Santiago_horas
                 {
                     if (l.combo.SelectedItem == null)
                     {
-                        MessageBox.Show($"Linha {i + 1}: selecione peça/justificativa.", "Validação", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        MessageBox.Show(
+                            $"Linha {i + 1}: selecione uma opção no combo.",
+                            "Validação",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
                         return;
                     }
                 }
             }
 
-            MessageBox.Show("Validação OK. (Agora você pode conectar ao ACCDB para salvar.)", "Sucesso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show("OK — pronto para salvar no banco.", "Sucesso", MessageBoxButtons.OK);
         }
     }
 }
