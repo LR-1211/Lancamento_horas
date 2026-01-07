@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
+using System.Data.OleDb;
 
 namespace Santiago_horas
 {
@@ -11,32 +12,91 @@ namespace Santiago_horas
 
         private int minHoras = 9;
         private Button botaoSelecionado = null;
-
+            
         public Form1()
         {
             InitializeComponent();
             this.BackColor = Color.FromArgb(155, 155, 155);
-            // FIX 1 — Painel não sai mais da tela
-            CorrigirLayoutPainel();
 
+            CorrigirLayoutPainel();
             InicializarHeader();
             CriarLinhas();
             WireHeaderEvents();
             AtualizarTotal();
+
+            TestarConexaoDB();
+            CarregarFuncionarios(); 
         }
 
-        // =======================================================================
-        // FIX: impede painel de sair da janela sem alterar nada do seu design
-        // =======================================================================
+        private void Form_1_Load(object sender, EventArgs e)
+        {
+            TestarConexaoDB();
+            CarregarFuncionarios();
+        }
+
+        private void TestarConexaoDB()
+        {
+            try
+            {
+                using (var conn = Db.GetConnection())
+                {
+                    conn.Open();
+                    MessageBox.Show(
+                        "Conexão com o banco de dados realizada com sucesso.",
+                        "Sucesso",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Erro ao conectar ao banco de dados:\n{ex.Message}",
+                    "Erro",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void CarregarFuncionarios()
+        {
+            try
+            {    using (var conn = Db.GetConnection())
+                {
+                    conn.Open();
+                    var cmd = new OleDbCommand(
+                        "SELECT [nomeFunc] FROM Funcionarios ORDER BY [nomeFunc]",
+                        conn);
+                    using (var rd = cmd.ExecuteReader())
+                    {
+                        while (rd.Read())
+                        {
+                            comboFuncionario.Items.Add(rd[0].ToString());
+                        }
+                    }
+                }
+                if (comboFuncionario.Items.Count > 0)
+                    comboFuncionario.SelectedIndex = 0;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Erro ao carregar funcionários:\n" + ex.Message,
+                    "Banco de Dados",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+        // =========================================================
+        // FIX LAYOUT
+        // =========================================================
         private void CorrigirLayoutPainel()
         {
-            // panelOuter corrigido
             panelOuter.Dock = DockStyle.Fill;
             panelOuter.Margin = new Padding(0);
             panelOuter.Padding = new Padding(0);
             panelOuter.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
-            // painelLinhas corrigido
             painelLinhas.Dock = DockStyle.Fill;
             painelLinhas.Margin = new Padding(0);
             painelLinhas.Padding = new Padding(0);
@@ -44,20 +104,20 @@ namespace Santiago_horas
             painelLinhas.HorizontalScroll.Enabled = false;
             painelLinhas.HorizontalScroll.Visible = false;
             painelLinhas.HorizontalScroll.Maximum = 0;
-
-            // evita overflow horizontal
             painelLinhas.AutoScrollMinSize = new Size(0, 0);
         }
 
+        // =========================================================
+        // HEADER
+        // =========================================================
         private void InicializarHeader()
         {
             comboFuncionario.Items.Clear();
-            comboFuncionario.Items.AddRange(new object[] { "Luccas", "Sergio", "Schiabel" });
-            if (comboFuncionario.Items.Count > 0) comboFuncionario.SelectedIndex = 0;
-
             dataPicker.Value = DateTime.Today;
         }
-
+        // =========================================================
+        // LINHAS
+        // =========================================================
         private void CriarLinhas()
         {
             painelLinhas.Controls.Clear();
@@ -67,17 +127,10 @@ namespace Santiago_horas
             {
                 var l = new LinhaItem();
 
-                // FIX — Garantir que nunca ultrapasse o painel
                 l.Base.Left = 105;
                 l.Base.Top = y;
                 l.Base.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
-
-                // largura dinâmica REAL
                 l.Base.Width = Math.Max(painelLinhas.ClientSize.Width - 20, 200);
-
-                // combo padrão (após marcar o tipo ele muda)
-                l.combo.Items.Clear();
-                l.combo.Items.AddRange(new object[] { "Projeto A", "Projeto B", "Projeto C", "OS-100", "OS-241", "Lopes" });
 
                 painelLinhas.Controls.Add(l.Base);
                 linhas[i] = l;
@@ -89,23 +142,24 @@ namespace Santiago_horas
                 l.chkJUST.CheckedChanged += (s, e) => Exclusivo(linhas[idx], linhas[idx].chkJUST);
 
                 l.txtHoras.TextChanged += (s, e) => AtualizarTotal();
-
                 l.txtHoras.Text = "00:00";
 
-                y += l.Base.Height + 13;   // margem vertical maior entre as linhas
+                y += l.Base.Height + 13;
             }
 
-            // FIX — Redimensionamento perfeito e automático
             painelLinhas.Resize += (s, e) =>
             {
                 foreach (var l in linhas)
                 {
                     if (l != null)
-                        l.Base.Width = painelLinhas.ClientSize.Width -20;
+                        l.Base.Width = painelLinhas.ClientSize.Width - 20;
                 }
             };
         }
 
+        // =========================================================
+        // EVENTOS HEADER
+        // =========================================================
         private void WireHeaderEvents()
         {
             btnSexta.Click += (s, e) => SelecionarDia(8, btnSexta);
@@ -131,20 +185,19 @@ namespace Santiago_horas
 
             botaoSelecionado = btn;
             botaoSelecionado.BackColor = Color.FromArgb(170, 50, 50);
-
             minHoras = minimo;
             AtualizarTotal();
         }
 
+        // =========================================================
+        // EXCLUSIVIDADE + OS (BANCO)
+        // =========================================================
         private void Exclusivo(LinhaItem linha, CheckBox marcado)
         {
             if (!marcado.Checked)
             {
-                linha.combo.DataSource = null;
-                linha.combo.Enabled = false;
-                linha.comboPeca.DataSource = null;
-                linha.comboPeca.Enabled = false;
-                return;
+                CarregarProjetos(linha); // ← BANCO
+
             }
 
             if (marcado != linha.chkPRJ) linha.chkPRJ.Checked = false;
@@ -153,27 +206,114 @@ namespace Santiago_horas
 
             if (marcado == linha.chkPRJ)
             {
-                linha.combo.Items.Clear();
-                linha.combo.Items.AddRange(new object[] { "Projeto A", "Projeto B", "Projeto C" });
-                linha.combo.Enabled = true;
-                linha.combo.SelectedIndex = 0;
+                CarregarProjetos(linha); // ← BANCO
+                linha.LiberarPecasFake();
             }
             else if (marcado == linha.chkOS)
             {
-                linha.combo.Items.Clear();
-                linha.combo.Items.AddRange(new object[] { "OS-100", "OS-241", "OS-999" });
-                linha.combo.Enabled = true;
-                linha.combo.SelectedIndex = 0;
+                CarregarOrdensServico(linha); // ← BANCO
             }
             else if (marcado == linha.chkJUST)
             {
                 linha.combo.Items.Clear();
-                linha.combo.Items.AddRange(new object[] { "Lopes", "Limpeza", "Aguard. Desenho", "Manutenção", "Atestado" });
+                linha.combo.Items.AddRange(new object[]
+                {
+                    "Lopes", "Limpeza", "Aguard. Desenho", "Manutenção", "Atestado"
+                });
                 linha.combo.Enabled = true;
                 linha.combo.SelectedIndex = 0;
             }
         }
 
+        private void CarregarOrdensServico(LinhaItem linha)
+        {
+            linha.combo.Items.Clear();
+            linha.combo.Enabled = false;
+
+            try
+            {
+                using (var conn = Db.GetConnection())
+                {
+                    conn.Open();
+
+                    var cmd = new OleDbCommand(
+                        @"SELECT [numeroOS]
+                  FROM [Ordem de serviço]
+                  WHERE encerradaOS = 0
+                  ORDER BY [numeroOS]",
+                        conn);
+
+                    using (var rd = cmd.ExecuteReader())
+                    {
+                        while (rd.Read())
+                        {
+                            linha.combo.Items.Add(rd[0].ToString());
+                        }
+                    }
+                }
+
+                if (linha.combo.Items.Count > 0)
+                {
+                    linha.combo.SelectedIndex = 0;
+                    linha.combo.Enabled = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Erro ao carregar Ordens de Serviço:\n" + ex.Message,
+                    "Banco de Dados",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void CarregarProjetos(LinhaItem linha)
+        {
+            linha.combo.Items.Clear();
+            linha.combo.Enabled = false;
+
+            try
+            {
+                using (var conn = Db.GetConnection())
+                {
+                    conn.Open();
+
+                    var cmd = new OleDbCommand(
+                        @"SELECT numeroPro
+                  FROM Projetos
+                  WHERE encerradaOS = 0
+                  ORDER BY numeroPro",
+                        conn);
+
+                    using (var rd = cmd.ExecuteReader())
+                    {
+                        while (rd.Read())
+                        {
+                            linha.combo.Items.Add(rd[0].ToString());
+                        }
+                    }
+                }
+
+                if (linha.combo.Items.Count > 0)
+                {
+                    linha.combo.SelectedIndex = 0;
+                    linha.combo.Enabled = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Erro ao carregar Projetos:\n" + ex.Message,
+                    "Banco de Dados",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        // =========================================================
+        // TOTAL
+        // =========================================================
         private void AtualizarTotal()
         {
             double soma = 0.0;
@@ -182,58 +322,58 @@ namespace Santiago_horas
             {
                 if (l == null) continue;
 
-                string txt = l.txtHoras.Text.Trim();
-
-                if (!DateTime.TryParseExact(txt, "HH:mm",
+                if (DateTime.TryParseExact(
+                    l.txtHoras.Text.Trim(),
+                    "HH:mm",
                     System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.None, out DateTime hora))
+                    System.Globalization.DateTimeStyles.None,
+                    out DateTime hora))
+                {
+                    l.txtHoras.BackColor = Color.White;
+                    soma += hora.Hour + (hora.Minute / 60.0);
+                }
+                else
                 {
                     l.txtHoras.BackColor = Color.LightCoral;
-                    continue;
                 }
-
-                l.txtHoras.BackColor = Color.White;
-                soma += hora.Hour + (hora.Minute / 60.0);
             }
 
             txtTotal.Text = soma.ToString("0.##");
         }
 
+        // =========================================================
+        // SALVAR (VALIDAÇÃO)
+        // =========================================================
         private void BtnSalvar_Click(object sender, EventArgs e)
         {
-            if (comboFuncionario.SelectedItem == null || string.IsNullOrWhiteSpace(comboFuncionario.Text))
+            if (comboFuncionario.SelectedItem == null)
             {
-                MessageBox.Show("Erro: Obrigatório Preenchimento de Funcionário", "Erro",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(
+                    "Erro: Obrigatório Preenchimento de Funcionário",
+                    "Erro",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
                 return;
             }
 
-            if (!double.TryParse(txtTotal.Text, out double total)) total = 0.0;
+            if (!double.TryParse(txtTotal.Text, out double total))
+                total = 0.0;
 
             if (total < minHoras)
             {
                 MessageBox.Show(
-                    $"Erro: total ({total:0.##}h). Requer um mínimo de ({minHoras}h).",
-                    "Validação", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    $"Erro: total ({total:0.##}h). Requer mínimo de ({minHoras}h).",
+                    "Validação",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
                 return;
             }
 
-            for (int i = 0; i < linhas.Length; i++)
-            {
-                var l = linhas[i];
-                if (l.chkPRJ.Checked || l.chkOS.Checked || l.chkJUST.Checked)
-                {
-                    if (l.combo.SelectedItem == null)
-                    {
-                        MessageBox.Show($"Linha {i + 1}: selecione a opção (combo).",
-                            "Validação", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return;
-                    }
-                }
-            }
-
-            MessageBox.Show("Validação OK. (agora você pode gravar no banco.)",
-                "Sucesso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(
+                "Validação OK. (agora você pode gravar no banco.)",
+                "Sucesso",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
     }
 }

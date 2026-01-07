@@ -23,13 +23,16 @@ namespace Santiago_horas
 
         private Panel panelPeca;
 
-        private readonly Dictionary<string, List<string>> PecasPorProjeto =
-            new Dictionary<string, List<string>>()
-            {
-                { "Projeto A", new List<string>{ "PORCA 023", "PINO 007" } },
-                { "Projeto B", new List<string>{ "BUCHA 110", "PARAFUSO 991" } },
-                { "Projeto C", new List<string>{ "EIXO 200", "ANEL 501" } },
-            };
+        private readonly List<string> PecasFake = new List<string>()
+        {
+            "PORCA 023",
+            "PINO 007",
+            "BUCHA 110",
+            "PARAFUSO 991",
+            "EIXO 200",
+            "ANEL 501"
+        };
+
 
         public LinhaItem()
         {
@@ -133,6 +136,20 @@ namespace Santiago_horas
             Base.Controls.Add(panelPeca);
         }
 
+        public void LiberarPecasFake()
+        {
+            comboPeca.Items.Clear();
+
+            comboPeca.Items.AddRange(PecasFake.ToArray());
+
+            comboPeca.Enabled = true;
+            comboPeca.SelectedIndex = 0;
+
+            if (comboPeca.Items.Count > 0)
+                comboPeca.SelectedIndex = 0;
+
+        }
+
         private void AplicarEstilos()
         {
             // paleta neutra (fundo cinza claro para o Base já aplicado),
@@ -147,8 +164,6 @@ namespace Santiago_horas
 
         private void WireEvents()
         {
-            // Eventos da combo para atualizar peças quando mudar tipo
-            combo.SelectedIndexChanged += Combo_SelectedIndexChanged;
 
             // Eventos de formatação/hardening do txtHoras
             txtHoras.KeyPress += TxtHoras_KeyPress;
@@ -156,32 +171,6 @@ namespace Santiago_horas
             txtHoras.Leave += TxtHoras_Leave;
         }
 
-        private void Combo_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            AtualizarListaPecasPorTipo();
-        }
-
-        private void AtualizarListaPecasPorTipo()
-        {
-            comboPeca.Items.Clear();
-            comboPeca.Enabled = false;
-
-            if (combo.SelectedItem == null) return;
-
-            string key = combo.SelectedItem.ToString();
-
-            if (PecasPorProjeto.ContainsKey(key))
-            {
-                foreach (var p in PecasPorProjeto[key])
-                    comboPeca.Items.Add(p);
-
-                if (comboPeca.Items.Count > 0)
-                {
-                    comboPeca.SelectedIndex = 0;
-                    comboPeca.Enabled = true;
-                }
-            }
-        }
 
         #region Horas - formatação segura
 

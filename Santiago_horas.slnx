@@ -1,3 +1,11 @@
 <Solution>
-  <Project Path="Santiago_horas/Santiago_horas.csproj" Id="6d33e253-47b7-41b2-adfe-a58af682024c" />
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Santiago_horas/Santiago_horas.csproj" Id="6d33e253-47b7-41b2-adfe-a58af682024c">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
 </Solution>
