@@ -21,18 +21,9 @@ namespace Santiago_horas
         // Horas
         public TextBox txtHoras { get; private set; }
 
+        #region Propriedades públicas (usadas pelo Form1)
+
         private Panel panelPeca;
-
-        private readonly List<string> PecasFake = new List<string>()
-        {
-            "PORCA 023",
-            "PINO 007",
-            "BUCHA 110",
-            "PARAFUSO 991",
-            "EIXO 200",
-            "ANEL 501"
-        };
-
 
         public LinhaItem()
         {
@@ -136,20 +127,6 @@ namespace Santiago_horas
             Base.Controls.Add(panelPeca);
         }
 
-        public void LiberarPecasFake()
-        {
-            comboPeca.Items.Clear();
-
-            comboPeca.Items.AddRange(PecasFake.ToArray());
-
-            comboPeca.Enabled = true;
-            comboPeca.SelectedIndex = 0;
-
-            if (comboPeca.Items.Count > 0)
-                comboPeca.SelectedIndex = 0;
-
-        }
-
         private void AplicarEstilos()
         {
             // paleta neutra (fundo cinza claro para o Base já aplicado),
@@ -232,5 +209,7 @@ namespace Santiago_horas
         public bool IsOS => chkOS?.Checked ?? false;
         public bool IsJust => chkJUST?.Checked ?? false;
         #endregion
+        public string NumeroOS => combo?.SelectedItem?.ToString();
+
     }
 }

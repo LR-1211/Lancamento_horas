@@ -1,7 +1,7 @@
 ﻿using System;
+using System.Data.OleDb;
 using System.Drawing;
 using System.Windows.Forms;
-using System.Data.OleDb;
 
 namespace Santiago_horas
 {
@@ -131,6 +131,18 @@ namespace Santiago_horas
                 l.Base.Top = y;
                 l.Base.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
                 l.Base.Width = Math.Max(painelLinhas.ClientSize.Width - 20, 200);
+                l.combo.SelectedIndexChanged += (s, e) =>
+                {
+                    if (!l.chkPRJ.Checked)
+                        return;
+
+                    string numeroProjeto = l.combo.SelectedItem?.ToString();
+                    if (string.IsNullOrEmpty(numeroProjeto))
+                        return;
+
+                    string setor = ObterSetorDoProjeto(numeroProjeto);
+                    CarregarPecasPorSetor(l, setor);
+                };
 
                 painelLinhas.Controls.Add(l.Base);
                 linhas[i] = l;
@@ -194,6 +206,10 @@ namespace Santiago_horas
         // =========================================================
         private void Exclusivo(LinhaItem linha, CheckBox marcado)
         {
+            // SEMPRE resetar peças ao trocar o tipo
+            linha.comboPeca.Items.Clear();
+            linha.comboPeca.Enabled = false;
+
             if (!marcado.Checked)
             {
                 CarregarProjetos(linha); // ← BANCO
@@ -207,7 +223,6 @@ namespace Santiago_horas
             if (marcado == linha.chkPRJ)
             {
                 CarregarProjetos(linha); // ← BANCO
-                linha.LiberarPecasFake();
             }
             else if (marcado == linha.chkOS)
             {
@@ -215,13 +230,7 @@ namespace Santiago_horas
             }
             else if (marcado == linha.chkJUST)
             {
-                linha.combo.Items.Clear();
-                linha.combo.Items.AddRange(new object[]
-                {
-                    "Lopes", "Limpeza", "Aguard. Desenho", "Manutenção", "Atestado"
-                });
-                linha.combo.Enabled = true;
-                linha.combo.SelectedIndex = 0;
+                CarregarJustificativas(linha); // ← BANCO
             }
         }
 
@@ -311,6 +320,179 @@ namespace Santiago_horas
             }
         }
 
+        private void CarregarPecas(LinhaItem linha, string setorProjeto)
+        {
+            linha.comboPeca.Items.Clear();
+            linha.comboPeca.Enabled = false;
+
+            try
+            {
+                using (var conn = Db.GetConnection())
+                {
+                    conn.Open();
+
+                    var cmd = new OleDbCommand(
+                        @"SELECT ID_Peca
+                  FROM Lista_Pecas
+                  WHERE Empresa = ?
+                  ORDER BY ID_Peca",
+                        conn);
+
+                    cmd.Parameters.AddWithValue("?", setorProjeto);
+
+                    using (var rd = cmd.ExecuteReader())
+                    {
+                        while (rd.Read())
+                        {
+                            linha.comboPeca.Items.Add(rd["ID_Peca"].ToString());
+                        }
+                    }
+                }
+
+                if (linha.comboPeca.Items.Count > 0)
+                {
+                    linha.comboPeca.SelectedIndex = 0;
+                    linha.comboPeca.Enabled = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Erro ao carregar Peças:\n" + ex.Message,
+                    "Banco de Dados",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void CarregarJustificativas(LinhaItem linha)
+        {
+            linha.combo.Items.Clear();
+            linha.combo.Enabled = false;
+
+            try
+            {
+                using (var conn = Db.GetConnection())
+                {
+                    conn.Open();
+
+                    var cmd = new OleDbCommand(
+                        @"SELECT ID_Justificativas
+                  FROM Justificativas
+                  ORDER BY ID_Justificativas",
+                        conn);
+
+                    using (var rd = cmd.ExecuteReader())
+                    {
+                        while (rd.Read())
+                        {
+                            linha.combo.Items.Add(rd[0].ToString());
+                        }
+                    }
+                }
+
+                if (linha.combo.Items.Count > 0)
+                {
+                    linha.combo.SelectedIndex = 0;
+                    linha.combo.Enabled = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Erro ao carregar Justificativas:\n" + ex.Message,
+                    "Banco de Dados",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private string ObterSetorDoProjeto(string numeroProjeto)
+        {
+            try
+            {
+                using (var conn = Db.GetConnection())
+                {
+                    conn.Open();
+
+                    var cmd = new OleDbCommand(
+                        @"SELECT setorT
+                          FROM Projetos
+                          WHERE numeroPro = ?",
+                        conn);
+
+                    cmd.Parameters.AddWithValue("?", numeroProjeto);
+
+                    var result = cmd.ExecuteScalar();
+                    if (result == null) return null;
+
+                    // Filtragem canonica
+                    var setor = result.ToString().Trim().ToUpper();
+
+                    if (setor == "MOLDES")
+                        return "Moldes";
+
+                    if (setor == "FERRAMENTARIA")
+                        return "Ferramenaria";
+
+                    return null;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+
+        private void CarregarPecasPorSetor(LinhaItem linha, string setor)
+        {
+            linha.comboPeca.Items.Clear();
+            linha.comboPeca.Enabled = false;
+
+            if (string.IsNullOrEmpty(setor))
+                return;
+
+            try
+            {
+                using (var conn = Db.GetConnection())
+                {
+                    conn.Open();
+
+                    var cmd = new OleDbCommand(
+                        @"SELECT ID_Peca
+                          FROM Lista_Pecas
+                          WHERE Empresa = ?
+                          ORDER BY ID_Peca",
+                        conn);
+
+                    cmd.Parameters.AddWithValue("?", setor);
+
+                    using (var rd = cmd.ExecuteReader())
+                    {
+                        while (rd.Read())
+                        {
+                            linha.comboPeca.Items.Add(rd[0].ToString());
+                        }
+                    }
+                }
+
+                if (linha.comboPeca.Items.Count > 0)
+                {
+                    linha.comboPeca.SelectedIndex = 0;
+                    linha.comboPeca.Enabled = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Erro ao carregar Peças:\n" + ex.Message,
+                    "Banco de Dados",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
         // =========================================================
         // TOTAL
         // =========================================================
@@ -344,8 +526,71 @@ namespace Santiago_horas
         // =========================================================
         // SALVAR (VALIDAÇÃO)
         // =========================================================
+        private bool ValidarLancamentoOS(LinhaItem linha)
+        {
+            if (!linha.IsOS)
+                return false;
+
+            if (string.IsNullOrWhiteSpace(linha.NumeroOS))  
+            {
+                MessageBox.Show("Informe a OS.");
+                return false;
+            }
+
+            if (linha.Horas <= 0)
+            {
+                MessageBox.Show("Informe as horas.");
+                return false;
+            }
+
+            return true;
+        }
+
+
+        private void SalvarLancamentosOS()
+        {
+            string funcionario = comboFuncionario.SelectedItem.ToString();
+            DateTime data = dataPicker.Value.Date;
+
+            using (var conn = Db.GetConnection())
+            {
+                conn.Open();
+
+                foreach (var linha in linhas)
+                {
+                    if (linha == null) continue;
+
+                    // 🔒 Só grava OS
+                    if (!linha.IsOS) continue;
+
+                    if (!TimeSpan.TryParse(linha.Horas, out TimeSpan ts))
+                        continue;
+
+                    decimal horas = (decimal)ts.TotalHours;
+
+                    string numeroOS = linha.combo.SelectedItem?.ToString();
+                    if (string.IsNullOrWhiteSpace(numeroOS)) continue;
+
+                    var cmd = new OleDbCommand(
+                        @"INSERT INTO [Valores Os]
+                  (funcionario, nOs, data, nHorasOs)
+                  VALUES (?, ?, ?, ?)", conn);
+
+                    cmd.Parameters.AddWithValue("?", funcionario);
+                    cmd.Parameters.AddWithValue("?", numeroOS);
+                    cmd.Parameters.AddWithValue("?", data);
+                    cmd.Parameters.AddWithValue("?", horas);
+
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+
+
         private void BtnSalvar_Click(object sender, EventArgs e)
         {
+            // ===== VALIDAÇÕES (INALTERADAS) =====
             if (comboFuncionario.SelectedItem == null)
             {
                 MessageBox.Show(
@@ -369,11 +614,15 @@ namespace Santiago_horas
                 return;
             }
 
+            // ===== GRAVAÇÃO OS =====
+            SalvarLancamentosOS();
+
             MessageBox.Show(
-                "Validação OK. (agora você pode gravar no banco.)",
+                "Lançamentos de OS gravados com sucesso.",
                 "Sucesso",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
+
     }
 }
