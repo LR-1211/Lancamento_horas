@@ -201,6 +201,14 @@ namespace Santiago_horas
             AtualizarTotal();
         }
 
+        private double ConverterHorasParaDouble(string horas)
+        {
+            if (!TimeSpan.TryParse(horas, out TimeSpan ts))
+                return 0;
+
+            return ts.TotalHours;
+        }
+
         // =========================================================
         // EXCLUSIVIDADE + OS (BANCO)
         // =========================================================
@@ -523,21 +531,51 @@ namespace Santiago_horas
             txtTotal.Text = soma.ToString("0.##");
         }
 
+        private int? ObterCodigoProjeto(string numeroPro)
+        {
+            using (var conn = Db.GetConnection())
+            {
+                conn.Open();
+
+                var cmd = new OleDbCommand(
+                    @"SELECT Código
+              FROM Projetos
+              WHERE numeroPro = ?", conn);
+
+                cmd.Parameters.Add("?", OleDbType.VarChar).Value = numeroPro;
+
+                var result = cmd.ExecuteScalar();
+
+                if (result == null || result == DBNull.Value)
+                    return null;
+
+                return Convert.ToInt32(result);
+            }
+        }
+
         // =========================================================
         // SALVAR (VALIDAÇÃO)
         // =========================================================
+        
+
         private bool ValidarLancamentoOS(LinhaItem linha)
         {
             if (!linha.IsOS)
                 return false;
 
-            if (string.IsNullOrWhiteSpace(linha.NumeroOS))  
+            if (string.IsNullOrWhiteSpace(linha.NumeroOS))
             {
                 MessageBox.Show("Informe a OS.");
                 return false;
             }
 
-            if (linha.Horas <= 0)
+            if (!TimeSpan.TryParse(linha.Horas, out TimeSpan ts))
+            {
+                MessageBox.Show("Horas inválidas.");
+                return false;
+            }
+
+            if (ts.TotalHours <= 0)
             {
                 MessageBox.Show("Informe as horas.");
                 return false;
@@ -547,8 +585,10 @@ namespace Santiago_horas
         }
 
 
-        private void SalvarLancamentosOS()
+        private bool SalvarLancamentosOS()
         {
+            bool gravou = false;
+
             string funcionario = comboFuncionario.SelectedItem.ToString();
             DateTime data = dataPicker.Value.Date;
 
@@ -559,37 +599,97 @@ namespace Santiago_horas
                 foreach (var linha in linhas)
                 {
                     if (linha == null) continue;
-
-                    // 🔒 Só grava OS
                     if (!linha.IsOS) continue;
 
                     if (!TimeSpan.TryParse(linha.Horas, out TimeSpan ts))
                         continue;
 
-                    decimal horas = (decimal)ts.TotalHours;
+                    if (ts.TotalHours <= 0)
+                        continue;
 
-                    string numeroOS = linha.combo.SelectedItem?.ToString();
-                    if (string.IsNullOrWhiteSpace(numeroOS)) continue;
+                    string numeroOS = linha.NumeroOS;
+                    if (string.IsNullOrWhiteSpace(numeroOS))
+                        continue;
 
                     var cmd = new OleDbCommand(
                         @"INSERT INTO [Valores Os]
-                  (funcionario, nOs, data, nHorasOs)
+                  (nOs, func_matOs, nHorasOs, data)
                   VALUES (?, ?, ?, ?)", conn);
 
-                    cmd.Parameters.AddWithValue("?", funcionario);
-                    cmd.Parameters.AddWithValue("?", numeroOS);
-                    cmd.Parameters.AddWithValue("?", data);
-                    cmd.Parameters.AddWithValue("?", horas);
+                    cmd.Parameters.Add("?", OleDbType.Integer).Value = int.Parse(numeroOS);
+                    cmd.Parameters.Add("?", OleDbType.VarChar).Value = funcionario;
+                    cmd.Parameters.Add("?", OleDbType.Double).Value = ts.TotalHours;
+                    cmd.Parameters.Add("?", OleDbType.Date).Value = data;
 
                     cmd.ExecuteNonQuery();
+                    gravou = true;
                 }
             }
+            return gravou;
         }
+
+
+        private bool SalvarLancamentosPJ()
+        {
+            bool gravou = false;
+
+            string funcionario = comboFuncionario.SelectedItem.ToString();
+            DateTime data = dataPicker.Value.Date;
+
+            using (var conn = Db.GetConnection())
+            {
+                conn.Open();
+
+                foreach (var linha in linhas)
+                {
+                    if (linha == null) continue;
+                    if (!linha.IsPRJ) continue;
+
+                    if (!TimeSpan.TryParse(linha.Horas, out TimeSpan ts))
+                        continue;
+
+                    if (ts.TotalHours <= 0)
+                        continue;
+
+                    string numeroPro = linha.Projeto;
+                    if (string.IsNullOrWhiteSpace(numeroPro))
+                        continue;
+
+                    int? codigoProjeto = ObterCodigoProjeto(numeroPro);
+                    if (codigoProjeto == null)
+                        continue;
+
+                    string peca = linha.Peca;
+                    if (string.IsNullOrWhiteSpace(peca))
+                        continue;
+
+                    var cmd = new OleDbCommand(
+                        @"INSERT INTO [Valores Pj]
+                  (CódigoPj, func_matPj, nHorasPj, data, funcionario)
+                  VALUES (?, ?, ?, ?, ?)", conn);
+
+                    // ⚠ ORDEM E TIPO ABSOLUTAMENTE CORRETOS
+                    cmd.Parameters.Add("?", OleDbType.Integer).Value = codigoProjeto.Value; // CodigoPj
+                    cmd.Parameters.Add("?", OleDbType.VarChar).Value = peca;                // func_matPj
+                    cmd.Parameters.Add("?", OleDbType.Double).Value = ts.TotalHours;        // nHorasPj
+                    cmd.Parameters.Add("?", OleDbType.Date).Value = data;                  // data
+                    cmd.Parameters.Add("?", OleDbType.VarChar).Value = funcionario;        // funcionario
+
+                    cmd.ExecuteNonQuery();
+                    gravou = true;
+                }
+            }
+            return gravou;
+        }
+
+
 
 
 
         private void BtnSalvar_Click(object sender, EventArgs e)
         {
+            bool gravouOS = false;
+            bool gravouPJ = false;
             // ===== VALIDAÇÕES (INALTERADAS) =====
             if (comboFuncionario.SelectedItem == null)
             {
@@ -614,14 +714,57 @@ namespace Santiago_horas
                 return;
             }
 
-            // ===== GRAVAÇÃO OS =====
-            SalvarLancamentosOS();
+            // ===== GRAVAÇÃO =====
+            
 
-            MessageBox.Show(
-                "Lançamentos de OS gravados com sucesso.",
-                "Sucesso",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            try
+            {
+                gravouOS = SalvarLancamentosOS();
+                gravouPJ = SalvarLancamentosPJ();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Erro ao gravar lançamentos:\n" + ex.Message,
+                    "Banco de Dados",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
+
+            // ===== FEEDBACK AO USUÁRIO =====
+            if (gravouOS && gravouPJ)
+            {
+                MessageBox.Show(
+                    "Lançamentos de OS e Projeto realizados com sucesso.",
+                    "Sucesso",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else if (gravouOS)
+            {
+                MessageBox.Show(
+                    "Lançamento de OS realizado com sucesso.",
+                    "Sucesso",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else if (gravouPJ)
+            {
+                MessageBox.Show(
+                    "Lançamento de Projeto realizado com sucesso.",
+                    "Sucesso",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show(
+                    "Nenhum lançamento foi realizado.",
+                    "Aviso",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
 
     }

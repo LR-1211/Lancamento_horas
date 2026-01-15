@@ -148,6 +148,7 @@ namespace Santiago_horas
             txtHoras.Leave += TxtHoras_Leave;
         }
 
+        #endregion
 
         #region Horas - formatação segura
 
@@ -208,8 +209,8 @@ namespace Santiago_horas
         public bool IsPRJ => chkPRJ?.Checked ?? false;
         public bool IsOS => chkOS?.Checked ?? false;
         public bool IsJust => chkJUST?.Checked ?? false;
-        #endregion
         public string NumeroOS => combo?.SelectedItem?.ToString();
+        #endregion
 
     }
 }
