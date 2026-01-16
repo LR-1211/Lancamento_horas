@@ -87,6 +87,8 @@ namespace Santiago_horas
                     MessageBoxIcon.Error);
             }
         }
+
+
         // =========================================================
         // FIX LAYOUT
         // =========================================================
@@ -441,7 +443,7 @@ namespace Santiago_horas
                         return "Moldes";
 
                     if (setor == "FERRAMENTARIA")
-                        return "Ferramenaria";
+                        return "Ferramentaria";
 
                     return null;
                 }
@@ -682,12 +684,75 @@ namespace Santiago_horas
             return gravou;
         }
 
+        private bool SalvarLancamentosJUST()
+        {
+            bool gravou = false;
 
+            // Verifica se há um funcionário selecionado para evitar erros
+            if (comboFuncionario.SelectedItem == null)
+            {
+                return false;
+            }
 
+            string nomeFunc = comboFuncionario.SelectedItem.ToString();
+            DateTime dataDia = dataPicker.Value.Date;
+
+            using (var conn = Db.GetConnection())
+            {
+                try
+                {
+                    conn.Open();
+
+                    foreach (var linha in linhas)
+                    {
+                        // Pula linhas vazias ou que não sejam de justificativa
+                        if (linha == null || !linha.IsJust) continue;
+
+                        // Tenta converter o texto da linha para TimeSpan (duração)
+                        if (!TimeSpan.TryParse(linha.Horas, out TimeSpan ts)) continue;
+
+                        // Não salva se a hora for zero ou negativa
+                        if (ts.TotalHours <= 0) continue;
+
+                        // Obtém a justificativa do ComboBox da linha
+                        string justificativa = linha.combo.SelectedItem?.ToString();
+                        if (string.IsNullOrWhiteSpace(justificativa)) continue;
+
+                        // --- O SEGREDO PARA O ACCESS ---
+                        // Criamos a data base 30/12/1899 (o "zero" do Access) e somamos as horas e minutos.
+                        // Isso evita que a data de hoje (2026) apareça no banco.
+                        DateTime horaParaBanco = new DateTime(1899, 12, 30).AddHours(ts.Hours).AddMinutes(ts.Minutes);
+
+                        var cmd = new OleDbCommand(
+                            @"INSERT INTO [Analise Justificativas]
+                    (data, nHorasJus, ID_Justificativas, nomeFunc)
+                    VALUES (?, ?, ?, ?)",
+                            conn);
+
+                        // Adicionando os parâmetros na ordem EXATA das interrogações (?)
+                        cmd.Parameters.Add("@data", OleDbType.Date).Value = dataDia;
+                        cmd.Parameters.Add("@horas", OleDbType.Date).Value = horaParaBanco;
+                        cmd.Parameters.Add("@just", OleDbType.VarChar).Value = justificativa;
+                        cmd.Parameters.Add("@func", OleDbType.VarChar).Value = nomeFunc;
+
+                        cmd.ExecuteNonQuery();
+                        gravou = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Opcional: MessageBox.Show("Erro ao salvar: " + ex.Message);
+                    return false;
+                }
+            }
+
+            return gravou;
+        }
 
 
         private void BtnSalvar_Click(object sender, EventArgs e)
         {
+            bool gravouJUST = false;
             bool gravouOS = false;
             bool gravouPJ = false;
             // ===== VALIDAÇÕES (INALTERADAS) =====
@@ -721,6 +786,7 @@ namespace Santiago_horas
             {
                 gravouOS = SalvarLancamentosOS();
                 gravouPJ = SalvarLancamentosPJ();
+                gravouJUST = SalvarLancamentosJUST();
             }
             catch (Exception ex)
             {
@@ -733,10 +799,18 @@ namespace Santiago_horas
             }
 
             // ===== FEEDBACK AO USUÁRIO =====
-            if (gravouOS && gravouPJ)
+            if (gravouOS && gravouPJ && gravouJUST)
             {
                 MessageBox.Show(
-                    "Lançamentos de OS e Projeto realizados com sucesso.",
+                    "Lançamentos de OS, Projeto e Justificativa realizados com sucesso.",
+                    "Sucesso",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else if (gravouOS && gravouPJ)
+            {
+                MessageBox.Show(
+                    "Lançamento de OS e Projeto realizado com sucesso.",
                     "Sucesso",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -753,6 +827,14 @@ namespace Santiago_horas
             {
                 MessageBox.Show(
                     "Lançamento de Projeto realizado com sucesso.",
+                    "Sucesso",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else if (gravouJUST)
+            {
+                MessageBox.Show(
+                    "Lançamento da Justificativa realizado com sucesso.",
                     "Sucesso",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
