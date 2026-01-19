@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Data.OleDb;
 using System.Drawing;
+using System.Globalization;
 using System.Windows.Forms;
 
 namespace Santiago_horas
@@ -503,6 +504,49 @@ namespace Santiago_horas
             }
         }
 
+        private (string setor, double custoHora)? ObterSetorECusto(string nomeFunc)
+        {
+            using (var conn = Db.GetConnection())
+            {
+                conn.Open();
+
+                // 1️⃣ Buscar FUNÇÃO do funcionário
+                var cmdFunc = new OleDbCommand(
+                    "SELECT funçãoFunc FROM Funcionarios WHERE nomeFunc = ?",
+                    conn);
+
+                cmdFunc.Parameters.Add("?", OleDbType.VarChar).Value = nomeFunc;
+
+                var funcaoObj = cmdFunc.ExecuteScalar();
+                if (funcaoObj == null)
+                    return null;
+
+                string funçãoFunc = funcaoObj.ToString().Trim();
+
+                // 2️⃣ Buscar SETOR e CUSTO pela FUNÇÃO
+                var cmdSetor = new OleDbCommand(
+                    "SELECT setores, custoHora FROM Setores WHERE setores = ?",
+                    conn);
+
+                cmdSetor.Parameters.Add("?", OleDbType.VarChar).Value = funçãoFunc;
+
+                using (var reader = cmdSetor.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        string setor = reader.GetString(0);         
+                        double custoHora = Convert.ToDouble(reader.GetValue(1));
+
+                        return (setor, custoHora);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+
+
         // =========================================================
         // TOTAL
         // =========================================================
@@ -603,25 +647,43 @@ namespace Santiago_horas
                     if (linha == null) continue;
                     if (!linha.IsOS) continue;
 
-                    if (!TimeSpan.TryParse(linha.Horas, out TimeSpan ts))
+
+                    var dadosSetor = ObterSetorECusto(funcionario);
+                    if (dadosSetor == null)
+                    {
+                        MessageBox.Show($"Setor não encontrado para funcionário: {funcionario}");
                         continue;
+                    }
+
+
+                    string setor = dadosSetor.Value.setor;
+                    double valorHora = dadosSetor.Value.custoHora;
+
+                    if (!TimeSpan.TryParseExact(linha.Horas, @"hh\:mm", CultureInfo.InvariantCulture, out TimeSpan ts))
+                    {
+                        MessageBox.Show($"Horas inválidas: {linha.Horas}");
+                        continue;
+                    }
 
                     if (ts.TotalHours <= 0)
                         continue;
 
                     string numeroOS = linha.NumeroOS;
-                    if (string.IsNullOrWhiteSpace(numeroOS))
-                        continue;
+                    if (string.IsNullOrWhiteSpace(numeroOS)) continue;
+                    DateTime horaParaBanco = new DateTime(1899, 12, 30).AddHours(ts.Hours).AddMinutes(ts.Minutes);
 
                     var cmd = new OleDbCommand(
                         @"INSERT INTO [Valores Os]
-                  (nOs, func_matOs, nHorasOs, data)
-                  VALUES (?, ?, ?, ?)", conn);
+                  (nOs, func_matOs, setor_forncOs, valorHora_unitOs, nHorasOs, data)
+                  VALUES (?, ?, ?, ?, ?, ?)", conn);
 
                     cmd.Parameters.Add("?", OleDbType.Integer).Value = int.Parse(numeroOS);
                     cmd.Parameters.Add("?", OleDbType.VarChar).Value = funcionario;
-                    cmd.Parameters.Add("?", OleDbType.Double).Value = ts.TotalHours;
+                    cmd.Parameters.Add("?", OleDbType.VarChar).Value = setor;
+                    cmd.Parameters.Add("?", OleDbType.Double).Value = valorHora;
+                    cmd.Parameters.Add("@horas", OleDbType.Date).Value = horaParaBanco; 
                     cmd.Parameters.Add("?", OleDbType.Date).Value = data;
+
 
                     cmd.ExecuteNonQuery();
                     gravou = true;
@@ -637,7 +699,6 @@ namespace Santiago_horas
 
             string funcionario = comboFuncionario.SelectedItem.ToString();
             DateTime data = dataPicker.Value.Date;
-
             using (var conn = Db.GetConnection())
             {
                 conn.Open();
@@ -647,15 +708,25 @@ namespace Santiago_horas
                     if (linha == null) continue;
                     if (!linha.IsPRJ) continue;
 
-                    if (!TimeSpan.TryParse(linha.Horas, out TimeSpan ts))
+                    var dadosSetor = ObterSetorECusto(funcionario);
+                    if (dadosSetor == null)
                         continue;
+
+                    string setor = dadosSetor.Value.setor;
+                    double valorHora = dadosSetor.Value.custoHora;
+
+                    if (!TimeSpan.TryParseExact(linha.Horas, @"hh\:mm", CultureInfo.InvariantCulture, out TimeSpan ts))
+                    {
+                        MessageBox.Show($"Horas inválidas: {linha.Horas}");
+                        continue;
+                    }
 
                     if (ts.TotalHours <= 0)
                         continue;
 
                     string numeroPro = linha.Projeto;
-                    if (string.IsNullOrWhiteSpace(numeroPro))
-                        continue;
+                    if (string.IsNullOrWhiteSpace(numeroPro)) continue;
+                    DateTime horaParaBanco = new DateTime(1899, 12, 30).AddHours(ts.Hours).AddMinutes(ts.Minutes);
 
                     int? codigoProjeto = ObterCodigoProjeto(numeroPro);
                     if (codigoProjeto == null)
@@ -667,13 +738,15 @@ namespace Santiago_horas
 
                     var cmd = new OleDbCommand(
                         @"INSERT INTO [Valores Pj]
-                  (CódigoPj, func_matPj, nHorasPj, data, funcionario)
-                  VALUES (?, ?, ?, ?, ?)", conn);
+                  (CódigoPj, func_matPj, setor_forncPj, valorHora_unitPj, nHorasPj, data, funcionario)
+                  VALUES (?, ?, ?, ?, ?, ?, ?)", conn);
 
                     // ⚠ ORDEM E TIPO ABSOLUTAMENTE CORRETOS
                     cmd.Parameters.Add("?", OleDbType.Integer).Value = codigoProjeto.Value; // CodigoPj
                     cmd.Parameters.Add("?", OleDbType.VarChar).Value = peca;                // func_matPj
-                    cmd.Parameters.Add("?", OleDbType.Double).Value = ts.TotalHours;        // nHorasPj
+                    cmd.Parameters.Add("?", OleDbType.VarChar).Value = setor;
+                    cmd.Parameters.Add("?", OleDbType.Double).Value = valorHora;
+                    cmd.Parameters.Add("@horas", OleDbType.Date).Value = horaParaBanco;
                     cmd.Parameters.Add("?", OleDbType.Date).Value = data;                  // data
                     cmd.Parameters.Add("?", OleDbType.VarChar).Value = funcionario;        // funcionario
 
@@ -709,7 +782,11 @@ namespace Santiago_horas
                         if (linha == null || !linha.IsJust) continue;
 
                         // Tenta converter o texto da linha para TimeSpan (duração)
-                        if (!TimeSpan.TryParse(linha.Horas, out TimeSpan ts)) continue;
+                        if (!TimeSpan.TryParseExact(linha.Horas,@"hh\:mm",CultureInfo.InvariantCulture,out TimeSpan ts))
+                        {
+                            MessageBox.Show($"Horas inválidas: {linha.Horas}");
+                            continue;
+                        }
 
                         // Não salva se a hora for zero ou negativa
                         if (ts.TotalHours <= 0) continue;
@@ -741,8 +818,11 @@ namespace Santiago_horas
                 }
                 catch (Exception ex)
                 {
-                    // Opcional: MessageBox.Show("Erro ao salvar: " + ex.Message);
-                    return false;
+                    MessageBox.Show(
+                        "Erro ao gravar lançamentos:\n" + ex.Message,
+                        "Erro",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
                 }
             }
 
