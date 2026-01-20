@@ -143,8 +143,8 @@ namespace Santiago_horas
                     if (string.IsNullOrEmpty(numeroProjeto))
                         return;
 
-                    string setor = ObterSetorDoProjeto(numeroProjeto);
-                    CarregarPecasPorSetor(l, setor);
+                    string setores = ObterSetorDoProjeto(numeroProjeto);
+                    CarregarPecasPorSetor(l, setores);
                 };
 
                 painelLinhas.Controls.Add(l.Base);
@@ -504,7 +504,7 @@ namespace Santiago_horas
             }
         }
 
-        private (string setor, double custoHora)? ObterSetorECusto(string nomeFunc)
+        private (string setores, double custoHora)? ObterSetorECusto(string nomeFunc)
         {
             using (var conn = Db.GetConnection())
             {
@@ -512,7 +512,7 @@ namespace Santiago_horas
 
                 // 1️⃣ Buscar FUNÇÃO do funcionário
                 var cmdFunc = new OleDbCommand(
-                    "SELECT funçãoFunc FROM Funcionarios WHERE nomeFunc = ?",
+                    "SELECT funçaoFunc FROM Funcionarios WHERE nomeFunc = ?",
                     conn);
 
                 cmdFunc.Parameters.Add("?", OleDbType.VarChar).Value = nomeFunc;
@@ -521,23 +521,23 @@ namespace Santiago_horas
                 if (funcaoObj == null)
                     return null;
 
-                string funçãoFunc = funcaoObj.ToString().Trim();
+                string funçaoFunc = funcaoObj.ToString().Trim();
 
                 // 2️⃣ Buscar SETOR e CUSTO pela FUNÇÃO
                 var cmdSetor = new OleDbCommand(
                     "SELECT setores, custoHora FROM Setores WHERE setores = ?",
                     conn);
 
-                cmdSetor.Parameters.Add("?", OleDbType.VarChar).Value = funçãoFunc;
+                cmdSetor.Parameters.Add("?", OleDbType.VarChar).Value = funçaoFunc;
 
                 using (var reader = cmdSetor.ExecuteReader())
                 {
                     if (reader.Read())
                     {
-                        string setor = reader.GetString(0);         
+                        string setores = reader.GetString(0);         
                         double custoHora = Convert.ToDouble(reader.GetValue(1));
 
-                        return (setor, custoHora);
+                        return (setores, custoHora);
                     }
                 }
             }
@@ -656,8 +656,9 @@ namespace Santiago_horas
                     }
 
 
-                    string setor = dadosSetor.Value.setor;
+                    string setores = dadosSetor.Value.setores;
                     double valorHora = dadosSetor.Value.custoHora;
+                    
 
                     if (!TimeSpan.TryParseExact(linha.Horas, @"hh\:mm", CultureInfo.InvariantCulture, out TimeSpan ts))
                     {
@@ -668,20 +669,24 @@ namespace Santiago_horas
                     if (ts.TotalHours <= 0)
                         continue;
 
+                    double totalMoeda = ts.TotalHours * valorHora;
+
                     string numeroOS = linha.NumeroOS;
                     if (string.IsNullOrWhiteSpace(numeroOS)) continue;
                     DateTime horaParaBanco = new DateTime(1899, 12, 30).AddHours(ts.Hours).AddMinutes(ts.Minutes);
 
                     var cmd = new OleDbCommand(
                         @"INSERT INTO [Valores Os]
-                  (nOs, func_matOs, setor_forncOs, valorHora_unitOs, nHorasOs, data)
-                  VALUES (?, ?, ?, ?, ?, ?)", conn);
+                  (nOs, setor_forncOs, valorHora_unitOs, nHorasOs, tipo, totMatOs, funcionario, data)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)", conn);
 
                     cmd.Parameters.Add("?", OleDbType.Integer).Value = int.Parse(numeroOS);
-                    cmd.Parameters.Add("?", OleDbType.VarChar).Value = funcionario;
-                    cmd.Parameters.Add("?", OleDbType.VarChar).Value = setor;
+                    cmd.Parameters.Add("?", OleDbType.VarChar).Value = setores;
                     cmd.Parameters.Add("?", OleDbType.Double).Value = valorHora;
-                    cmd.Parameters.Add("@horas", OleDbType.Date).Value = horaParaBanco; 
+                    cmd.Parameters.Add("@horas", OleDbType.Date).Value = horaParaBanco;
+                    cmd.Parameters.Add("?", OleDbType.Integer).Value = 1;
+                    cmd.Parameters.Add("?", OleDbType.Currency).Value = totalMoeda;
+                    cmd.Parameters.Add("?", OleDbType.VarChar).Value = funcionario;
                     cmd.Parameters.Add("?", OleDbType.Date).Value = data;
 
 
@@ -712,7 +717,7 @@ namespace Santiago_horas
                     if (dadosSetor == null)
                         continue;
 
-                    string setor = dadosSetor.Value.setor;
+                    string setor = dadosSetor.Value.setores;
                     double valorHora = dadosSetor.Value.custoHora;
 
                     if (!TimeSpan.TryParseExact(linha.Horas, @"hh\:mm", CultureInfo.InvariantCulture, out TimeSpan ts))
@@ -723,6 +728,8 @@ namespace Santiago_horas
 
                     if (ts.TotalHours <= 0)
                         continue;
+
+                    double totalMoeda = ts.TotalHours * valorHora;
 
                     string numeroPro = linha.Projeto;
                     if (string.IsNullOrWhiteSpace(numeroPro)) continue;
@@ -738,8 +745,8 @@ namespace Santiago_horas
 
                     var cmd = new OleDbCommand(
                         @"INSERT INTO [Valores Pj]
-                  (CódigoPj, func_matPj, setor_forncPj, valorHora_unitPj, nHorasPj, data, funcionario)
-                  VALUES (?, ?, ?, ?, ?, ?, ?)", conn);
+                  (CódigoPj, func_matPj, setor_forncPj, valorHora_unitPj, nHorasPj, tipoPj, totMatPj, data, funcionario)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", conn);
 
                     // ⚠ ORDEM E TIPO ABSOLUTAMENTE CORRETOS
                     cmd.Parameters.Add("?", OleDbType.Integer).Value = codigoProjeto.Value; // CodigoPj
@@ -747,6 +754,8 @@ namespace Santiago_horas
                     cmd.Parameters.Add("?", OleDbType.VarChar).Value = setor;
                     cmd.Parameters.Add("?", OleDbType.Double).Value = valorHora;
                     cmd.Parameters.Add("@horas", OleDbType.Date).Value = horaParaBanco;
+                    cmd.Parameters.Add("?", OleDbType.Boolean).Value = true;
+                    cmd.Parameters.Add("?", OleDbType.Currency).Value = totalMoeda;
                     cmd.Parameters.Add("?", OleDbType.Date).Value = data;                  // data
                     cmd.Parameters.Add("?", OleDbType.VarChar).Value = funcionario;        // funcionario
 
